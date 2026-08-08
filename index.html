@@ -11,34 +11,40 @@
       background: white;
       color: black;
       margin: 0;
-      padding: 24px;
+      padding: 18px;
     }
 
     h1 {
       text-align: center;
-      font-size: 34px;
-      margin: 5px 0 25px 0;
+      font-size: 30px;
+      margin: 5px 0 18px 0;
     }
 
     .day {
       border: 2px solid black;
-      padding: 16px;
-      margin-bottom: 18px;
-    }
-
-    .day-title {
-      font-size: 28px;
-      font-weight: bold;
-      margin-bottom: 10px;
+      padding: 12px 15px;
+      margin-bottom: 12px;
     }
 
     .today {
       border: 5px solid black;
     }
 
-    .event {
+    .day-title {
       font-size: 25px;
-      line-height: 1.5;
+      font-weight: bold;
+      margin-bottom: 7px;
+    }
+
+    .parent {
+      font-size: 25px;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .detail {
+      font-size: 21px;
+      line-height: 1.35;
     }
   </style>
 </head>
@@ -47,35 +53,163 @@
 
 <h1>Phoebe's Calendar</h1>
 
-<div class="day">
-  <div class="day-title">YESTERDAY</div>
-  <div class="event">Mama</div>
-  <div class="event">🛝 Playground</div>
-</div>
+<div id="calendar"></div>
 
-<div class="day today">
-  <div class="day-title">TODAY</div>
-  <div class="event">Mommy</div>
-  <div class="event">🏊 Swimming</div>
-  <div class="event">Sleep with Mommy</div>
-</div>
+<script>
+(function () {
 
-<div class="day">
-  <div class="day-title">TOMORROW</div>
-  <div class="event">Mama</div>
-  <div class="event">Grandma ❤️</div>
-</div>
+  var dayNames = [
+    "SUNDAY",
+    "MONDAY",
+    "TUESDAY",
+    "WEDNESDAY",
+    "THURSDAY",
+    "FRIDAY",
+    "SATURDAY"
+  ];
 
-<div class="day">
-  <div class="day-title">MONDAY</div>
-  <div class="event">Mama</div>
-</div>
+  function startOfDay(date) {
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    );
+  }
 
-<div class="day">
-  <div class="day-title">TUESDAY</div>
-  <div class="event">Mommy</div>
-  <div class="event">Dentist 🦷</div>
-</div>
+  function daysBetween(a, b) {
+    var oneDay = 24 * 60 * 60 * 1000;
+    return Math.round(
+      (startOfDay(a).getTime() - startOfDay(b).getTime()) / oneDay
+    );
+  }
+
+  function parentForDate(date) {
+    var day = date.getDay();
+
+    /* Monday + Tuesday = Mommy */
+    if (day === 1 || day === 2) {
+      return "Mommy";
+    }
+
+    /* Wednesday + Thursday = Mama */
+    if (day === 3 || day === 4) {
+      return "Mama";
+    }
+
+    /*
+      Friday-Sunday alternate as one weekend block.
+
+      Friday August 14, 2026 begins a Mommy weekend.
+    */
+    var friday = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    );
+
+    if (day === 6) {
+      friday.setDate(friday.getDate() - 1);
+    }
+
+    if (day === 0) {
+      friday.setDate(friday.getDate() - 2);
+    }
+
+    var anchorFriday = new Date(2026, 7, 14);
+
+    var difference = daysBetween(friday, anchorFriday);
+    var weekendNumber = Math.round(difference / 7);
+
+    if (Math.abs(weekendNumber % 2) === 0) {
+      return "Mommy";
+    }
+
+    return "Mama";
+  }
+
+  function titleForOffset(offset, date) {
+    if (offset === -1) {
+      return "YESTERDAY";
+    }
+
+    if (offset === 0) {
+      return "TODAY";
+    }
+
+    if (offset === 1) {
+      return "TOMORROW";
+    }
+
+    return dayNames[date.getDay()];
+  }
+
+  function makeDate(base, offset) {
+    var date = new Date(
+      base.getFullYear(),
+      base.getMonth(),
+      base.getDate()
+    );
+
+    date.setDate(date.getDate() + offset);
+    return date;
+  }
+
+  var today = new Date();
+  var calendar = document.getElementById("calendar");
+
+  /*
+    Seven-day rolling window:
+    yesterday + today + five upcoming days
+  */
+  for (var offset = -1; offset <= 5; offset++) {
+
+    var date = makeDate(today, offset);
+    var previousDate = makeDate(date, -1);
+
+    var parent = parentForDate(date);
+    var previousParent = parentForDate(previousDate);
+
+    var box = document.createElement("div");
+    box.className = offset === 0 ? "day today" : "day";
+
+    var title = document.createElement("div");
+    title.className = "day-title";
+    title.appendChild(
+      document.createTextNode(titleForOffset(offset, date))
+    );
+    box.appendChild(title);
+
+    if (parent === previousParent) {
+
+      var parentLine = document.createElement("div");
+      parentLine.className = "parent";
+      parentLine.appendChild(
+        document.createTextNode(parent)
+      );
+      box.appendChild(parentLine);
+
+    } else {
+
+      var wake = document.createElement("div");
+      wake.className = "detail";
+      wake.appendChild(
+        document.createTextNode("Wake up with " + previousParent)
+      );
+      box.appendChild(wake);
+
+      var sleep = document.createElement("div");
+      sleep.className = "parent";
+      sleep.appendChild(
+        document.createTextNode("Sleep with " + parent)
+      );
+      box.appendChild(sleep);
+    }
+
+    calendar.appendChild(box);
+  }
+
+})();
+</script>
 
 </body>
 </html>
