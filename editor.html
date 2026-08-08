@@ -28,6 +28,11 @@
       font-size: 28px;
     }
 
+    h2 {
+      font-size: 20px;
+      margin-top: 25px;
+    }
+
     label {
       display: block;
       font-weight: bold;
@@ -44,17 +49,23 @@
     }
 
     textarea {
-      min-height: 100px;
+      min-height: 95px;
       resize: vertical;
     }
 
     button {
       width: 100%;
-      margin-top: 22px;
+      margin-top: 18px;
       padding: 14px;
-      font-size: 19px;
+      font-size: 18px;
       font-weight: bold;
       cursor: pointer;
+    }
+
+    .secondary {
+      font-weight: normal;
+      font-size: 15px;
+      padding: 10px;
     }
 
     .note {
@@ -62,6 +73,24 @@
       font-size: 14px;
       color: #555;
       line-height: 1.4;
+    }
+
+    .success {
+      color: #176b2c;
+      font-weight: bold;
+    }
+
+    .error {
+      color: #a00000;
+      font-weight: bold;
+    }
+
+    #calendarEditor {
+      display: none;
+    }
+
+    #disconnectButton {
+      display: none;
     }
   </style>
 </head>
@@ -72,35 +101,332 @@
 
   <h1>Phoebe Calendar</h1>
 
-  <label for="date">Date</label>
-  <input id="date" type="date">
+  <div id="setup">
 
-  <label for="event">Event</label>
-  <textarea id="event" placeholder="Swimming, Grandma's house, Dentist..."></textarea>
+    <h2>Connect Parent Device</h2>
 
-  <button id="saveButton">Save Event</button>
+    <div class="note">
+      This is a one-time setup on this device.
+      Your GitHub token stays in this browser and is not saved in the public webpage.
+    </div>
 
-  <div class="note" id="status">
-    Prototype editor — saving will be connected next.
+    <label for="token">Private access token</label>
+    <input
+      id="token"
+      type="password"
+      autocomplete="off"
+      placeholder="Paste token here"
+    >
+
+    <button id="connectButton">Connect This Device</button>
+
   </div>
+
+
+  <div id="calendarEditor">
+
+    <label for="date">Date</label>
+    <input id="date" type="date">
+
+    <label for="event">Event</label>
+    <textarea
+      id="event"
+      placeholder="Swimming, Grandma's house, Dentist..."
+    ></textarea>
+
+    <button id="saveButton">Save Event</button>
+
+  </div>
+
+  <div id="status" class="note"></div>
+
+  <button id="disconnectButton" class="secondary">
+    Disconnect This Device
+  </button>
 
 </div>
 
+
 <script>
-document.getElementById("saveButton").onclick = function () {
+(function () {
 
-  var date = document.getElementById("date").value;
-  var eventText = document.getElementById("event").value;
+  var OWNER = "cleahy3-sheep";
+  var REPO = "project-phoebe";
+  var FILE = "events.json";
+  var BRANCH = "main";
 
-  if (!date || !eventText) {
-    document.getElementById("status").innerHTML =
-      "Please choose a date and enter an event.";
-    return;
+  var TOKEN_KEY = "phoebe_calendar_github_token";
+
+  var setup = document.getElementById("setup");
+  var editor = document.getElementById("calendarEditor");
+  var status = document.getElementById("status");
+  var disconnectButton =
+    document.getElementById("disconnectButton");
+
+
+  function getToken() {
+    return localStorage.getItem(TOKEN_KEY);
   }
 
-  document.getElementById("status").innerHTML =
-    "Looks good. Secure saving is the next step.";
-};
+
+  function showEditor() {
+
+    setup.style.display = "none";
+    editor.style.display = "block";
+    disconnectButton.style.display = "block";
+
+    status.className = "note";
+    status.innerHTML = "Parent device connected.";
+  }
+
+
+  function showSetup() {
+
+    setup.style.display = "block";
+    editor.style.display = "none";
+    disconnectButton.style.display = "none";
+  }
+
+
+  function apiUrl() {
+
+    return (
+      "https://api.github.com/repos/" +
+      OWNER +
+      "/" +
+      REPO +
+      "/contents/" +
+      FILE
+    );
+  }
+
+
+  function githubHeaders(token) {
+
+    return {
+      "Accept": "application/vnd.github+json",
+      "Authorization": "Bearer " + token,
+      "X-GitHub-Api-Version": "2022-11-28"
+    };
+  }
+
+
+  function decodeBase64(text) {
+
+    var cleaned = text.replace(/\n/g, "");
+
+    return decodeURIComponent(
+      escape(
+        atob(cleaned)
+      )
+    );
+  }
+
+
+  function encodeBase64(text) {
+
+    return btoa(
+      unescape(
+        encodeURIComponent(text)
+      )
+    );
+  }
+
+
+  async function readEvents(token) {
+
+    var response = await fetch(
+      apiUrl() + "?ref=" + BRANCH + "&t=" + Date.now(),
+      {
+        method: "GET",
+        headers: githubHeaders(token),
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        "Could not read calendar data. GitHub returned " +
+        response.status +
+        "."
+      );
+    }
+
+    var fileData = await response.json();
+
+    var events = JSON.parse(
+      decodeBase64(fileData.content)
+    );
+
+    return {
+      events: events,
+      sha: fileData.sha
+    };
+  }
+
+
+  async function writeEvents(token, events, sha) {
+
+    var jsonText =
+      JSON.stringify(events, null, 2) + "\n";
+
+    var response = await fetch(
+      apiUrl(),
+      {
+        method: "PUT",
+
+        headers: Object.assign(
+          {
+            "Content-Type": "application/json"
+          },
+          githubHeaders(token)
+        ),
+
+        body: JSON.stringify({
+          message: "Update Phoebe calendar event",
+          content: encodeBase64(jsonText),
+          sha: sha,
+          branch: BRANCH
+        })
+      }
+    );
+
+    if (!response.ok) {
+
+      var message =
+        "Could not save the event. GitHub returned " +
+        response.status +
+        ".";
+
+      throw new Error(message);
+    }
+
+    return await response.json();
+  }
+
+
+  document.getElementById("connectButton").onclick =
+    async function () {
+
+      var token =
+        document.getElementById("token").value.trim();
+
+      if (!token) {
+
+        status.className = "note error";
+        status.innerHTML =
+          "Paste the private token first.";
+
+        return;
+      }
+
+      status.className = "note";
+      status.innerHTML = "Checking connection...";
+
+      try {
+
+        await readEvents(token);
+
+        localStorage.setItem(
+          TOKEN_KEY,
+          token
+        );
+
+        document.getElementById("token").value = "";
+
+        showEditor();
+
+      } catch (error) {
+
+        status.className = "note error";
+        status.innerHTML =
+          "Connection failed. " + error.message;
+      }
+    };
+
+
+  document.getElementById("saveButton").onclick =
+    async function () {
+
+      var token = getToken();
+
+      var date =
+        document.getElementById("date").value;
+
+      var eventText =
+        document.getElementById("event").value.trim();
+
+      if (!date || !eventText) {
+
+        status.className = "note error";
+        status.innerHTML =
+          "Choose a date and enter an event.";
+
+        return;
+      }
+
+      status.className = "note";
+      status.innerHTML = "Saving...";
+
+      try {
+
+        /*
+          Read the newest version first so we do not
+          overwrite another parent's recent changes.
+        */
+
+        var current = await readEvents(token);
+
+        if (!current.events[date]) {
+          current.events[date] = [];
+        }
+
+        current.events[date].push(eventText);
+
+        await writeEvents(
+          token,
+          current.events,
+          current.sha
+        );
+
+        document.getElementById("event").value = "";
+
+        status.className = "note success";
+        status.innerHTML =
+          "Saved! The Kobo calendar will receive the new event.";
+
+      } catch (error) {
+
+        status.className = "note error";
+        status.innerHTML = error.message;
+      }
+    };
+
+
+  disconnectButton.onclick = function () {
+
+    localStorage.removeItem(TOKEN_KEY);
+
+    status.className = "note";
+    status.innerHTML =
+      "This parent device has been disconnected.";
+
+    showSetup();
+  };
+
+
+  /*
+    If this browser was connected previously,
+    go straight to the normal parent editor.
+  */
+
+  if (getToken()) {
+    showEditor();
+  } else {
+    showSetup();
+  }
+
+})();
 </script>
 
 </body>
