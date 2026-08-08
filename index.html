@@ -46,6 +46,13 @@
       font-size: 21px;
       line-height: 1.35;
     }
+
+    .event {
+      font-size: 22px;
+      font-weight: bold;
+      margin-top: 7px;
+      line-height: 1.3;
+    }
   </style>
 </head>
 
@@ -78,6 +85,7 @@
 
   function daysBetween(a, b) {
     var oneDay = 24 * 60 * 60 * 1000;
+
     return Math.round(
       (startOfDay(a).getTime() - startOfDay(b).getTime()) / oneDay
     );
@@ -86,21 +94,17 @@
   function parentForDate(date) {
     var day = date.getDay();
 
-    /* Monday + Tuesday = Mommy */
+    /* Monday + Tuesday */
     if (day === 1 || day === 2) {
       return "Mommy";
     }
 
-    /* Wednesday + Thursday = Mama */
+    /* Wednesday + Thursday */
     if (day === 3 || day === 4) {
       return "Mama";
     }
 
-    /*
-      Friday-Sunday alternate as one weekend block.
-
-      Friday August 14, 2026 begins a Mommy weekend.
-    */
+    /* Friday-Sunday alternating weekend */
     var friday = new Date(
       date.getFullYear(),
       date.getMonth(),
@@ -115,6 +119,7 @@
       friday.setDate(friday.getDate() - 2);
     }
 
+    /* August 14, 2026 = start of a Mommy weekend */
     var anchorFriday = new Date(2026, 7, 14);
 
     var difference = daysBetween(friday, anchorFriday);
@@ -151,62 +156,153 @@
     );
 
     date.setDate(date.getDate() + offset);
+
     return date;
   }
 
-  var today = new Date();
-  var calendar = document.getElementById("calendar");
-
-  /*
-    Seven-day rolling window:
-    yesterday + today + five upcoming days
-  */
-  for (var offset = -1; offset <= 5; offset++) {
-
-    var date = makeDate(today, offset);
-    var previousDate = makeDate(date, -1);
-
-    var parent = parentForDate(date);
-    var previousParent = parentForDate(previousDate);
-
-    var box = document.createElement("div");
-    box.className = offset === 0 ? "day today" : "day";
-
-    var title = document.createElement("div");
-    title.className = "day-title";
-    title.appendChild(
-      document.createTextNode(titleForOffset(offset, date))
-    );
-    box.appendChild(title);
-
-    if (parent === previousParent) {
-
-      var parentLine = document.createElement("div");
-      parentLine.className = "parent";
-      parentLine.appendChild(
-        document.createTextNode(parent)
-      );
-      box.appendChild(parentLine);
-
-    } else {
-
-      var wake = document.createElement("div");
-      wake.className = "detail";
-      wake.appendChild(
-        document.createTextNode("Wake up with " + previousParent)
-      );
-      box.appendChild(wake);
-
-      var sleep = document.createElement("div");
-      sleep.className = "parent";
-      sleep.appendChild(
-        document.createTextNode("Sleep with " + parent)
-      );
-      box.appendChild(sleep);
+  function twoDigits(number) {
+    if (number < 10) {
+      return "0" + number;
     }
 
-    calendar.appendChild(box);
+    return "" + number;
   }
+
+  function dateKey(date) {
+    return (
+      date.getFullYear() +
+      "-" +
+      twoDigits(date.getMonth() + 1) +
+      "-" +
+      twoDigits(date.getDate())
+    );
+  }
+
+  function renderCalendar(events) {
+
+    var today = new Date();
+    var calendar = document.getElementById("calendar");
+
+    calendar.innerHTML = "";
+
+    /* Yesterday + Today + five future days */
+    for (var offset = -1; offset <= 5; offset++) {
+
+      var date = makeDate(today, offset);
+      var previousDate = makeDate(date, -1);
+
+      var parent = parentForDate(date);
+      var previousParent = parentForDate(previousDate);
+
+      var box = document.createElement("div");
+
+      if (offset === 0) {
+        box.className = "day today";
+      } else {
+        box.className = "day";
+      }
+
+      var title = document.createElement("div");
+      title.className = "day-title";
+      title.appendChild(
+        document.createTextNode(
+          titleForOffset(offset, date)
+        )
+      );
+
+      box.appendChild(title);
+
+      if (parent === previousParent) {
+
+        var parentLine = document.createElement("div");
+        parentLine.className = "parent";
+        parentLine.appendChild(
+          document.createTextNode(parent)
+        );
+
+        box.appendChild(parentLine);
+
+      } else {
+
+        var wake = document.createElement("div");
+        wake.className = "detail";
+        wake.appendChild(
+          document.createTextNode(
+            "Wake up with " + previousParent
+          )
+        );
+
+        box.appendChild(wake);
+
+        var sleep = document.createElement("div");
+        sleep.className = "parent";
+        sleep.appendChild(
+          document.createTextNode(
+            "Sleep with " + parent
+          )
+        );
+
+        box.appendChild(sleep);
+      }
+
+      var key = dateKey(date);
+
+      if (events[key]) {
+
+        for (var i = 0; i < events[key].length; i++) {
+
+          var eventLine = document.createElement("div");
+          eventLine.className = "event";
+
+          eventLine.appendChild(
+            document.createTextNode(events[key][i])
+          );
+
+          box.appendChild(eventLine);
+        }
+      }
+
+      calendar.appendChild(box);
+    }
+  }
+
+  /*
+    Use an old-style request because it is more compatible
+    with the Kobo's browser than modern fetch().
+  */
+  var request = new XMLHttpRequest();
+
+  request.onreadystatechange = function () {
+
+    if (request.readyState === 4) {
+
+      if (request.status === 200) {
+
+        try {
+          var events = JSON.parse(request.responseText);
+          renderCalendar(events);
+
+        } catch (error) {
+          renderCalendar({});
+        }
+
+      } else {
+        renderCalendar({});
+      }
+    }
+  };
+
+  /*
+    The number on the end helps stop the Kobo
+    from showing an old cached copy of events.json.
+  */
+  request.open(
+    "GET",
+    "events.json?t=" + new Date().getTime(),
+    true
+  );
+
+  request.send();
 
 })();
 </script>
